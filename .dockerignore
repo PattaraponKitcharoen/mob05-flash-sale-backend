@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+.git
+.gitignore
+k6
+report
+*.md
+.env
