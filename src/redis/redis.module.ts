@@ -1,3 +1,4 @@
+//เชื่อมต่อระบบแคชเข้ากับแอป
 import { Global, Module } from '@nestjs/common';
 import { RedisService } from './redis.service';
 
