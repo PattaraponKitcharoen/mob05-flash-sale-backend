@@ -62,24 +62,29 @@ export class OrdersController {
             throw new NotFoundException('Unknown product');
         }
 
-        const job = await this.queue.add(
-            ORDER_JOB,
-            { userId, productId },
-            {
-                // Deterministic id makes a duplicate enqueue a no-op even if the
-                // Redis claim were somehow bypassed. BullMQ rejects ':' in custom ids.
-                jobId: `${productId}__${userId}`,
-                removeOnComplete: true,
-                removeOnFail: 1000,
-                attempts: 3,
-                backoff: { type: 'fixed', delay: 200 },
-            },
-        );
+        try {
+            const job = await this.queue.add(
+                ORDER_JOB,
+                { userId, productId },
+                {
+                    // Deterministic id makes a duplicate enqueue a no-op even if the
+                    // Redis claim were somehow bypassed. BullMQ rejects ':' in custom ids.
+                    jobId: `${productId}__${userId}`,
+                    removeOnComplete: true,
+                    removeOnFail: 1000,
+                    attempts: 3,
+                    backoff: { type: 'fixed', delay: 200 },
+                },);
 
-        return {
-            status: 'processing',
-            orderJobId: job.id,
-            message: 'Your order is in the queue.',
-        };
+            return {
+                status: 'processing',
+                orderJobId: job.id,
+                message: 'Your order is in the queue.',
+            };
+
+        } catch (error) {
+            await this.redis.release(productId, userId);
+            throw error;
+        }
     }
 }
