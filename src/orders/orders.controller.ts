@@ -70,8 +70,10 @@ export class OrdersController {
                     // Deterministic id makes a duplicate enqueue a no-op even if the
                     // Redis claim were somehow bypassed. BullMQ rejects ':' in custom ids.
                     jobId: `${productId}__${userId}`,
-                    removeOnComplete: true,
-                    removeOnFail: 1000,
+                    // Keep a bounded history instead of deleting on success,
+                    // so Bull-Board can actually show Completed Jobs.
+                    removeOnComplete: { count: 5000 },
+                    removeOnFail: { count: 5000 },
                     attempts: 3,
                     backoff: { type: 'fixed', delay: 200 },
                 },);

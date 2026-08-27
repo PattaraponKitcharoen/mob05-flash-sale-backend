@@ -28,13 +28,15 @@ export class OrderProcessor extends WorkerHost {
         // fastest option available: Postgres takes the row lock itself, and
         // the WHERE clause makes a negative stock impossible. This beats
         // SELECT ... FOR UPDATE followed by a second statement.
-        const updated: Array<{ remaining_stock: number }> = await m.query(
-          `UPDATE products
+        const updated = rowsOf<{ remaining_stock: number }>(
+          await m.query(
+            `UPDATE products
               SET remaining_stock = remaining_stock - 1
             WHERE product_id = $1
               AND remaining_stock > 0
         RETURNING remaining_stock`,
-          [productId],
+            [productId],
+          ),
         );
 
         if (updated.length === 0) {
@@ -44,12 +46,14 @@ export class OrderProcessor extends WorkerHost {
         // Final safety net: the unique constraint on (user_id, product_id)
         // means a second reservation can never be persisted, whatever the
         // upstream layers did.
-        const inserted: Array<{ id: string }> = await m.query(
-          `INSERT INTO orders (user_id, product_id, quantity, status, job_id)
+        const inserted = rowsOf<{ id: string }>(
+          await m.query(
+            `INSERT INTO orders (user_id, product_id, quantity, status, job_id)
            VALUES ($1, $2, 1, 'CONFIRMED', $3)
            ON CONFLICT ON CONSTRAINT uq_orders_user_product DO NOTHING
         RETURNING id`,
-          [userId, productId, String(job.id)],
+            [userId, productId, String(job.id)],
+          ),
         );
 
         if (inserted.length === 0) {
@@ -85,9 +89,11 @@ export class OrderProcessor extends WorkerHost {
   }
 
   private async syncStockCounter(productId: string) {
-    const rows: Array<{ remaining_stock: number }> = await this.ds.query(
-      'SELECT remaining_stock FROM products WHERE product_id = $1',
-      [productId],
+    const rows = rowsOf<{ remaining_stock: number }>(
+      await this.ds.query(
+        'SELECT remaining_stock FROM products WHERE product_id = $1',
+        [productId],
+      ),
     );
     if (rows.length > 0) {
       await this.redis.client.set(
@@ -96,6 +102,23 @@ export class OrderProcessor extends WorkerHost {
       );
     }
   }
+}
+
+/**
+ * TypeORM returns `[rows, affectedCount]` for INSERT/UPDATE/DELETE and a plain
+ * row array for SELECT. Checking `.length` on the raw result therefore always
+ * sees 2 for a write, which silently disables every "no rows matched" branch.
+ */
+function rowsOf<T>(result: unknown): T[] {
+  if (
+    Array.isArray(result) &&
+    result.length === 2 &&
+    Array.isArray(result[0]) &&
+    typeof result[1] === 'number'
+  ) {
+    return result[0] as T[];
+  }
+  return Array.isArray(result) ? (result as T[]) : [];
 }
 
 class SoldOutError extends Error {}
