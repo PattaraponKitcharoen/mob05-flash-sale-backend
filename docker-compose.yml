@@ -15,6 +15,8 @@ services:
       - synchronous_commit=off
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-admin} -d ${DB_NAME:-flashsale}"]
       interval: 3s
@@ -96,3 +98,6 @@ services:
     entrypoint: ["k6", "run", "/scripts/loadtest.js"]
     depends_on:
       - nginx
+
+volumes:
+  postgres_data:
