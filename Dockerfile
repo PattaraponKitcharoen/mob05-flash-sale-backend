@@ -14,4 +14,5 @@ RUN npm ci --only=production
 COPY --from=builder /usr/src/app/dist ./dist
 # seed.ts reads seed/products.json from the working directory at runtime.
 COPY seed ./seed
+USER node
 CMD ["node", "dist/main.js"]
