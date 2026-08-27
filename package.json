@@ -30,7 +30,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/platform-fastify": "^11.2.3",
     "@nestjs/typeorm": "^11.0.3",
-    "bullmq": "^6.2.2",
+    "bullmq": "^6.3.1",
     "ioredis": "^5.11.1",
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
