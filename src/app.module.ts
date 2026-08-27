@@ -7,11 +7,13 @@ import { ProductsModule } from './products/products.module';
 import { HealthModule } from './health/health.module';
 
 @Module({
-  imports: [OrdersModule, AuthModule],
+  imports: [OrdersModule, 
+            AuthModule,
+            HealthModule,
+            ProductsModule,],
   controllers: [AppController],
   providers: [AppService],
-  HealthModule,
-  ProductsModule,
+  
   
 })
 export class AppModule {}
