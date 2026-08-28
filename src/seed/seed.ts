@@ -45,11 +45,12 @@ async function main() {
     password: process.env.DB_PASS ?? 'password',
     database: process.env.DB_NAME ?? 'flashsale',
     entities: [Product, Order],
-    // The seed container is the only place allowed to touch the schema.
-    synchronize: true,
+    migrations: [__dirname + '/migrations/*.ts'],
+    synchronize: false,
     logging: false,
   });
   await ds.initialize();
+  await ds.runMigrations();
 
   // A load test must start from a known state, so every run resets both the
   // order history and the stock counters.
