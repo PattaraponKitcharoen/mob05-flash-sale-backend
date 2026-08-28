@@ -45,7 +45,7 @@ async function main() {
     password: process.env.DB_PASS ?? 'password',
     database: process.env.DB_NAME ?? 'flashsale',
     entities: [Product, Order],
-    migrations: [__dirname + '/migrations/*.ts'],
+    migrations: [join(__dirname, '..', 'migrations', '*.{ts,js}')],
     synchronize: false,
     logging: false,
   });
