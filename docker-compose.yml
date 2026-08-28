@@ -92,7 +92,7 @@ services:
     image: grafana/k6:latest
     profiles: ["loadtest"]
     volumes:
-      - ./k6:/scripts:ro
+      - ./k6:/scripts
     environment:
       BASE_URL: http://nginx
     entrypoint: ["k6", "run", "/scripts/loadtest.js"]

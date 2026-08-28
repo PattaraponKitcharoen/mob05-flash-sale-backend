@@ -14,9 +14,12 @@ const TARGET_PRODUCT = __ENV.TARGET_PRODUCT || 'p-1001';
 // READ_ITERATIONS requests. The run ends when that work is done, so the
 // elapsed time is itself the result.
 const READ_VUS = Number(__ENV.READ_VUS || 1000);
-const READ_ITERATIONS = Number(__ENV.READ_ITERATIONS || 1);
+const READ_ITERATIONS = Number(__ENV.READ_ITERATIONS || 100);
 const READ_LIMIT = Number(__ENV.READ_LIMIT || 10);
 const READ_PAGES = Number(__ENV.READ_PAGES || 2);
+// Units of TARGET_PRODUCT on offer; used only to verify the final verdict.
+const EXPECTED_STOCK = Number(__ENV.EXPECTED_STOCK || 50);
+const FULL_SUMMARY = String(__ENV.FULL_SUMMARY || '') !== '';
 
 const accepted = new Counter('orders_accepted');
 const duplicate = new Counter('orders_duplicate');
@@ -31,8 +34,12 @@ const readElapsed = new Trend('read_elapsed_ms', true);
 const writeElapsed = new Trend('write_elapsed_ms', true);
 const readRequests = new Counter('read_requests');
 const writeRequests = new Counter('write_requests');
+// Anything that is not a valid response: 5xx, timeouts, unparseable bodies.
+const readErrors = new Counter('read_errors');
 
 export const options = {
+  // p99 and max are what expose a bad tail; k6 shows neither by default.
+  summaryTrendStats: ['med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   scenarios: {
     // Read-heavy: 1,000 concurrent users against the cached product list.
     read_load: {
@@ -94,6 +101,7 @@ export function readProducts() {
   );
   readLatency.add(res.timings.duration);
   readRequests.add(1);
+  if (res.status !== 200) readErrors.add(1);
   check(res, {
     'read 200': (r) => r.status === 200,
     'read has data': (r) => {
@@ -150,40 +158,231 @@ export function teardown() {
   }
 }
 
-function fmt(ms) {
-  return `${(ms / 1000).toFixed(2)}s (${Math.round(ms)} ms)`;
+// ---------------------------------------------------------------------------
+// Summary formatting
+// ---------------------------------------------------------------------------
+
+const LINE = '='.repeat(66);
+
+function padR(v, n) {
+  let s = String(v);
+  while (s.length < n) s += ' ';
+  return s;
+}
+
+function padL(v, n) {
+  let s = String(v);
+  while (s.length < n) s = ' ' + s;
+  return s;
+}
+
+/** 101201 -> "101,201" */
+function num(n) {
+  const parts = String(Math.round(n)).split('');
+  let out = '';
+  for (let i = 0; i < parts.length; i++) {
+    const fromEnd = parts.length - i;
+    out += parts[i];
+    if (fromEnd > 1 && (fromEnd - 1) % 3 === 0) out += ',';
+  }
+  return out;
+}
+
+function secs(ms) {
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+function rate(count, ms) {
+  if (!ms) return '-';
+  return `${num(count / (ms / 1000))} req/s`;
+}
+
+function pct(part, total) {
+  if (!total) return '0.000 %';
+  return `${((part / total) * 100).toFixed(3)} %`;
+}
+
+function trend(metric) {
+  const v = (metric && metric.values) || {};
+  return {
+    med: v.med || 0,
+    p90: v['p(90)'] || 0,
+    p95: v['p(95)'] || 0,
+    p99: v['p(99)'] || 0,
+    max: v.max || 0,
+  };
+}
+
+function latencyRow(label, t) {
+  return (
+    '    ' +
+    padR(label, 18) +
+    padL(t.med.toFixed(1), 8) +
+    padL(t.p90.toFixed(1), 8) +
+    padL(t.p95.toFixed(1), 8) +
+    padL(t.p99.toFixed(1), 8) +
+    padL(t.max.toFixed(1), 9)
+  );
+}
+
+function verdict(ok, text) {
+  return `    ${ok ? 'PASS' : 'FAIL'}  ${text}`;
 }
 
 /**
- * k6's default summary reports latency per request; this adds the number the
- * assignment actually asks for - how long the whole fixed workload took.
+ * k6's default output buries the three numbers the assignment asks for
+ * (Req/s, p95, error rate) inside forty lines of internal timing metrics, and
+ * its own `http_req_failed` counts 409/410 as failures even though those are
+ * the correct business answers. This prints the report instead.
  */
 export function handleSummary(data) {
   const m = data.metrics;
+  const count = (name) => (m[name] ? m[name].values.count : 0);
+
   const readMs = m.read_elapsed_ms ? m.read_elapsed_ms.values.max : 0;
   const writeMs = m.write_elapsed_ms ? m.write_elapsed_ms.values.max : 0;
-  const readReqs = m.read_requests ? m.read_requests.values.count : 0;
-  const writeReqs = m.write_requests ? m.write_requests.values.count : 0;
+  const totalMs = data.state.testRunDurationMs;
 
-  const lines = [
-    '',
-    '  █ WORKLOAD COMPLETION TIME',
-    '',
-    `    read  : ${READ_VUS} concurrent users x ${READ_ITERATIONS} requests`,
-    `            ${readReqs} requests in ${fmt(readMs)}`,
-    `            ${(readReqs / (readMs / 1000)).toFixed(0)} req/s`,
-    '',
-    `    write : ${USER_COUNT} concurrent users (every 5th fires 3x)`,
-    `            ${writeReqs} requests in ${fmt(writeMs)}`,
-    `            ${(writeReqs / (writeMs / 1000)).toFixed(0)} req/s`,
-    '',
-    `    total run: ${fmt(data.state.testRunDurationMs)}`,
-    '',
-  ];
+  const readReqs = count('read_requests');
+  const writeReqs = count('write_requests');
+  const totalReqs = count('http_reqs');
 
-  return {
-    stdout:
-      lines.join('\n') + '\n' +
-      textSummary(data, { indent: '  ', enableColors: true }),
-  };
+  const okCount = count('orders_accepted');
+  const dupCount = count('orders_duplicate');
+  const goneCount = count('orders_sold_out');
+  const badCount = count('orders_unexpected');
+  const readErr = count('read_errors');
+
+  // Real errors are transport failures and unexpected status codes only.
+  // 409 (already reserved) and 410 (sold out) are correct answers.
+  const realErrors = readErr + badCount;
+  const rejections = dupCount + goneCount;
+
+  const checks = (m.checks && m.checks.values) || { passes: 0, fails: 0 };
+  const checksTotal = checks.passes + checks.fails;
+
+  const readT = trend(m.read_latency);
+  const orderT = trend(m.order_latency);
+
+  const out = [];
+  const push = (l) => out.push(l === undefined ? '' : l);
+
+  push('');
+  push(LINE);
+  push(`  FLASH SALE LOAD TEST   ${BASE_URL}`);
+  push(LINE);
+  push('');
+  push('  THROUGHPUT');
+  push(
+    '    ' +
+    padR('overall', 18) +
+    padL(rate(totalReqs, totalMs), 14) +
+    '   ' +
+    padL(num(totalReqs), 9) +
+    ' requests / ' +
+    secs(totalMs),
+  );
+  push(
+    '    ' +
+    padR('GET  /products', 18) +
+    padL(rate(readReqs, readMs), 14) +
+    '   ' +
+    padL(num(readReqs), 9) +
+    ' requests / ' +
+    secs(readMs),
+  );
+  push(
+    '    ' +
+    padR('POST /orders', 18) +
+    padL(rate(writeReqs, writeMs), 14) +
+    '   ' +
+    padL(num(writeReqs), 9) +
+    ' requests / ' +
+    secs(writeMs),
+  );
+  push('');
+  push('  LATENCY (ms)');
+  push(
+    '    ' +
+    padR('endpoint', 18) +
+    padL('med', 8) +
+    padL('p90', 8) +
+    padL('p95', 8) +
+    padL('p99', 8) +
+    padL('max', 9),
+  );
+  push(latencyRow('GET  /products', readT));
+  push(latencyRow('POST /orders', orderT));
+  push('');
+  push('  ERROR RATE');
+  push(
+    '    ' +
+    padR('real errors', 22) +
+    padL(num(realErrors), 9) +
+    ' of ' +
+    padL(num(totalReqs), 9) +
+    '   ' +
+    padL(pct(realErrors, totalReqs), 9),
+  );
+  push(
+    '    ' +
+    padR('business rejections', 22) +
+    padL(num(rejections), 9) +
+    ' of ' +
+    padL(num(writeReqs), 9) +
+    '   ' +
+    padL(pct(rejections, writeReqs), 9) +
+    `   (409: ${num(dupCount)}, 410: ${num(goneCount)})`,
+  );
+  push(
+    '    ' +
+    padR('checks passed', 22) +
+    padL(num(checks.passes), 9) +
+    ' of ' +
+    padL(num(checksTotal), 9) +
+    '   ' +
+    padL(pct(checks.passes, checksTotal), 9),
+  );
+  push('');
+  push(`  ORDER OUTCOMES   (${TARGET_PRODUCT}, ${EXPECTED_STOCK} units on offer)`);
+  push('    ' + padR('202 accepted', 22) + padL(num(okCount), 9));
+  push('    ' + padR('409 duplicate user', 22) + padL(num(dupCount), 9));
+  push('    ' + padR('410 sold out', 22) + padL(num(goneCount), 9));
+  push('    ' + padR('unexpected status', 22) + padL(num(badCount), 9));
+  push('');
+  push('  VERDICT');
+  push(verdict(realErrors === 0, `error rate ${pct(realErrors, totalReqs)}`));
+  push(
+    verdict(
+      okCount === EXPECTED_STOCK,
+      `accepted ${num(okCount)} of ${num(EXPECTED_STOCK)} units on offer`,
+    ),
+  );
+  push(
+    verdict(readT.p95 < 500, `GET  /products p95 ${readT.p95.toFixed(1)} ms`),
+  );
+  push(
+    verdict(orderT.p95 < 3000, `POST /orders   p95 ${orderT.p95.toFixed(1)} ms`),
+  );
+
+  if (readMs < 2000) {
+    push('');
+    push('  WARNING');
+    push(
+      `    read phase lasted only ${secs(readMs)} - mostly connection setup`,
+    );
+    push(
+      '    and cold cache. Raise READ_ITERATIONS until it runs 3 s or more,',
+    );
+    push('    otherwise the throughput and p95 figures are not comparable.');
+  }
+
+  push(LINE);
+  push('');
+
+  let stdout = out.join('\n');
+  if (FULL_SUMMARY) {
+    stdout += textSummary(data, { indent: '  ', enableColors: true });
+  }
+  return { stdout };
 }
