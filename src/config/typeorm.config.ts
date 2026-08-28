@@ -5,24 +5,11 @@ import { Product } from '../entities/product.entity';
 export function buildTypeOrmOptions(): TypeOrmModuleOptions {
   return {
     type: 'postgres',
-    replication: {
-      master: {
-        host: process.env.DB_HOST ?? 'localhost',
-        port: Number(process.env.DB_PORT ?? 5432),
-        username: process.env.DB_USER ?? 'admin',
-        password: process.env.DB_PASS ?? 'password',
-        database: process.env.DB_NAME ?? 'flashsale',
-      },
-      slaves: [
-        {
-          host: process.env.DB_REPLICA_HOST ?? 'localhost',
-          port: Number(process.env.DB_PORT ?? 5432),
-          username: process.env.DB_USER ?? 'admin',
-          password: process.env.DB_PASS ?? 'password',
-          database: process.env.DB_NAME ?? 'flashsale',
-        },
-      ],
-    },
+    host: process.env.DB_HOST ?? 'localhost',
+    port: Number(process.env.DB_PORT ?? 5432),
+    username: process.env.DB_USER ?? 'admin',
+    password: process.env.DB_PASS ?? 'password',
+    database: process.env.DB_NAME ?? 'flashsale',
     entities: [Product, Order],
     // Schema is created once by the seed container, never by the API pods.
     synchronize: false,
