@@ -1,5 +1,4 @@
 import {
-    BadRequestException,
     Body,
     ConflictException,
     Controller,
@@ -21,6 +20,7 @@ import {
     RESERVE_UNKNOWN_PRODUCT,
     RedisService,
 } from '../redis/redis.service';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 @Controller('orders')
 export class OrdersController {
@@ -39,12 +39,9 @@ export class OrdersController {
     @HttpCode(202)
     async create(
         @Req() req: AuthedRequest,
-        @Body() body: { productId?: string },
+        @Body() dto: CreateOrderDto,
     ) {
-        const productId = body?.productId;
-        if (typeof productId !== 'string' || productId.length === 0) {
-            throw new BadRequestException('productId is required');
-        }
+        const productId = dto.productId;
         const userId = req.userId;
 
         // Single atomic claim: duplicate detection and stock decrement together.

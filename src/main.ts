@@ -4,6 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '@nestjs/common';
 
 
 async function bootstrap() {
@@ -13,6 +14,7 @@ async function bootstrap() {
     { logger: ['error', 'warn'] },
   );
   
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.setGlobalPrefix('api/v1');
 
   const port = Number(process.env.PORT ?? 3000);

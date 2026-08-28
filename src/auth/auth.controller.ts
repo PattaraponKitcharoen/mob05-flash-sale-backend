@@ -1,11 +1,11 @@
 import {
-    BadRequestException,
     Body,
     Controller,
     HttpCode,
     Post,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { TokenDto } from './dto/token.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,11 +17,8 @@ export class AuthController {
      */
     @Post('token')
     @HttpCode(200)
-    async token(@Body() body: { userId?: string }) {
-        const userId = body?.userId;
-        if (typeof userId !== 'string' || userId.length === 0) {
-            throw new BadRequestException('userId is required');
-        }
+    async token(@Body() dto: TokenDto) {
+        const userId = dto.userId;
         return {
             status: 'success',
             accessToken: await this.jwt.signAsync({ sub: userId }),
