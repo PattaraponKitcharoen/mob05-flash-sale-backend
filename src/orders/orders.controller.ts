@@ -1,33 +1,19 @@
 import {
     Body,
-    ConflictException,
     Controller,
-    GoneException,
     HttpCode,
-    NotFoundException,
     Post,
     Req,
     UseGuards,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthedRequest } from '../auth/authed-request';
-import { ORDERS_QUEUE, ORDER_JOB, OrderJobData } from './orders.constants';
-import {
-    RESERVE_DUPLICATE,
-    RESERVE_SOLD_OUT,
-    RESERVE_UNKNOWN_PRODUCT,
-    RedisService,
-} from '../redis/redis.service';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { OrdersService } from './orders.service';
 
 @Controller('orders')
 export class OrdersController {
-    constructor(
-        @InjectQueue(ORDERS_QUEUE) private readonly queue: Queue<OrderJobData>,
-        private readonly redis: RedisService,
-    ) { }
+    constructor(private readonly ordersService: OrdersService) { }
 
     /**
      * Write path. Everything here is O(1) in-memory work: verify the JWT, run
@@ -41,49 +27,6 @@ export class OrdersController {
         @Req() req: AuthedRequest,
         @Body() dto: CreateOrderDto,
     ) {
-        const productId = dto.productId;
-        const userId = req.userId;
-
-        // Single atomic claim: duplicate detection and stock decrement together.
-        // Everyone past the stock limit is rejected right here and never reaches
-        // the queue or the database.
-        const result = await this.redis.reserve(productId, userId);
-
-        if (result === RESERVE_DUPLICATE) {
-            throw new ConflictException('User already reserved this product');
-        }
-        if (result === RESERVE_SOLD_OUT) {
-            throw new GoneException('Product is sold out');
-        }
-        if (result === RESERVE_UNKNOWN_PRODUCT) {
-            throw new NotFoundException('Unknown product');
-        }
-
-        try {
-            const job = await this.queue.add(
-                ORDER_JOB,
-                { userId, productId },
-                {
-                    // Deterministic id makes a duplicate enqueue a no-op even if the
-                    // Redis claim were somehow bypassed. BullMQ rejects ':' in custom ids.
-                    jobId: `${productId}__${userId}`,
-                    // Keep a bounded history instead of deleting on success,
-                    // so Bull-Board can actually show Completed Jobs.
-                    removeOnComplete: { count: 5000 },
-                    removeOnFail: { count: 5000 },
-                    attempts: 3,
-                    backoff: { type: 'fixed', delay: 200 },
-                },);
-
-            return {
-                status: 'processing',
-                orderJobId: job.id,
-                message: 'Your order is in the queue.',
-            };
-
-        } catch (error) {
-            await this.redis.release(productId, userId);
-            throw error;
-        }
+        return this.ordersService.createOrder(dto.productId, req.userId);
     }
 }
