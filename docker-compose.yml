@@ -25,7 +25,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru", "--appendonly", "no", "--save", ""]
     ports:
       - "6379:6379"
     healthcheck:
