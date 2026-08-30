@@ -1,6 +1,5 @@
 import {
     ConflictException,
-    GoneException,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -9,7 +8,6 @@ import { Queue } from 'bullmq';
 import { ORDERS_QUEUE, ORDER_JOB, OrderJobData } from './orders.constants';
 import {
     RESERVE_DUPLICATE,
-    RESERVE_SOLD_OUT,
     RESERVE_UNKNOWN_PRODUCT,
     RedisService,
 } from '../redis/redis.service';
@@ -29,9 +27,6 @@ export class OrdersService {
 
         if (result === RESERVE_DUPLICATE) {
             throw new ConflictException('User already reserved this product');
-        }
-        if (result === RESERVE_SOLD_OUT) {
-            throw new GoneException('Product is sold out');
         }
         if (result === RESERVE_UNKNOWN_PRODUCT) {
             throw new NotFoundException('Unknown product');

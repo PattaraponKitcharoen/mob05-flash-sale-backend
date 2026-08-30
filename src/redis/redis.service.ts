@@ -30,17 +30,8 @@ local stock = redis.call('GET', KEYS[2])
 if not stock then
   return -3
 end
-if tonumber(stock) <= 0 then
-  return -2
-end
 redis.call('SADD', KEYS[1], ARGV[1])
-local left = redis.call('DECR', KEYS[2])
-if left < 0 then
-  redis.call('INCR', KEYS[2])
-  redis.call('SREM', KEYS[1], ARGV[1])
-  return -2
-end
-return left
+return 0
 `;
 
 /**
@@ -49,7 +40,7 @@ return left
  */
 const RELEASE_SCRIPT = `
 if redis.call('SREM', KEYS[1], ARGV[1]) == 1 then
-  return redis.call('INCR', KEYS[2])
+  return 0
 end
 return -1
 `;
