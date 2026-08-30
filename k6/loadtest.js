@@ -113,7 +113,15 @@ export function readProducts() {
 }
 
 export function placeOrder(data) {
-  const token = data.tokens[(__VU - 1) % data.tokens.length];
+  // __VU is unique across the whole test run, not just this scenario -
+  // read_load also allocates VUs (up to READ_VUS) before write_load starts,
+  // so raw __VU values here are not a clean 1..USER_COUNT range. Mapping them
+  // via modulo caused two different VUs to collide on the same token (a fake
+  // duplicate) while another token went unused (a missing acceptance).
+  // iterationInTest is scoped to this scenario and starts at 0, so with
+  // vus: USER_COUNT and iterations: 1 it lands on each token exactly once.
+  const idx = exec.scenario.iterationInTest;
+  const token = data.tokens[idx % data.tokens.length];
   const params = {
     headers: {
       'Content-Type': 'application/json',
@@ -125,7 +133,7 @@ export function placeOrder(data) {
 
   // Every fifth user double-taps: three simultaneous requests from the same
   // JWT, which must still yield at most one reservation.
-  const burst = __VU % 5 === 0 ? 3 : 1;
+  const burst = idx % 5 === 0 ? 3 : 1;
   const requests = [];
   for (let i = 0; i < burst; i++) {
     requests.push(['POST', `${BASE_URL}/api/v1/orders`, payload, params]);
@@ -144,13 +152,6 @@ export function placeOrder(data) {
     });
   }
   writeElapsed.add(Date.now() - exec.scenario.startTime);
-}
-
-export function teardown() {
-  const res = http.get(`${BASE_URL}/api/v1/metrics/cache`);
-  if (res.status === 200) {
-    console.log(`cache stats: ${res.body}`);
-  }
 }
 
 // ---------------------------------------------------------------------------
