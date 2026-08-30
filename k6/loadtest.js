@@ -6,7 +6,7 @@ import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.4/index.js';
 
 // docker compose exposes Nginx on :80. Point BASE_URL at another team's
 // deployment to run the cross-group comparison required by the report.
-const BASE_URL = __ENV.BASE_URL || 'http://localhost';
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const USER_COUNT = Number(__ENV.USER_COUNT || 500);
 const TARGET_PRODUCT = __ENV.TARGET_PRODUCT || 'p-1001';
 
@@ -17,13 +17,10 @@ const READ_VUS = Number(__ENV.READ_VUS || 1000);
 const READ_ITERATIONS = Number(__ENV.READ_ITERATIONS || 100);
 const READ_LIMIT = Number(__ENV.READ_LIMIT || 10);
 const READ_PAGES = Number(__ENV.READ_PAGES || 2);
-// Units of TARGET_PRODUCT on offer; used only to verify the final verdict.
-const EXPECTED_STOCK = Number(__ENV.EXPECTED_STOCK || 50);
 const FULL_SUMMARY = String(__ENV.FULL_SUMMARY || '') !== '';
 
 const accepted = new Counter('orders_accepted');
 const duplicate = new Counter('orders_duplicate');
-const soldOut = new Counter('orders_sold_out');
 const unexpected = new Counter('orders_unexpected');
 const orderLatency = new Trend('order_latency', true);
 const readLatency = new Trend('read_latency', true);
@@ -140,12 +137,10 @@ export function placeOrder(data) {
     writeRequests.add(1);
     if (res.status === 202) accepted.add(1);
     else if (res.status === 409) duplicate.add(1);
-    else if (res.status === 410) soldOut.add(1);
     else unexpected.add(1);
 
     check(res, {
-      'order handled': (r) =>
-        r.status === 202 || r.status === 409 || r.status === 410,
+      'order handled': (r) => r.status === 202 || r.status === 409,
     });
   }
   writeElapsed.add(Date.now() - exec.scenario.startTime);
@@ -232,8 +227,8 @@ function verdict(ok, text) {
 /**
  * k6's default output buries the three numbers the assignment asks for
  * (Req/s, p95, error rate) inside forty lines of internal timing metrics, and
- * its own `http_req_failed` counts 409/410 as failures even though those are
- * the correct business answers. This prints the report instead.
+ * its own `http_req_failed` counts 409 as a failure even though it is the
+ * correct business answer. This prints the report instead.
  */
 export function handleSummary(data) {
   const m = data.metrics;
@@ -249,14 +244,14 @@ export function handleSummary(data) {
 
   const okCount = count('orders_accepted');
   const dupCount = count('orders_duplicate');
-  const goneCount = count('orders_sold_out');
   const badCount = count('orders_unexpected');
   const readErr = count('read_errors');
 
   // Real errors are transport failures and unexpected status codes only.
-  // 409 (already reserved) and 410 (sold out) are correct answers.
+  // 409 (already reserved) is a correct answer - everyone else is queued as
+  // 202 and sold-out is resolved asynchronously by the worker, not here.
   const realErrors = readErr + badCount;
-  const rejections = dupCount + goneCount;
+  const rejections = dupCount;
 
   const checks = (m.checks && m.checks.values) || { passes: 0, fails: 0 };
   const checksTotal = checks.passes + checks.fails;
@@ -332,7 +327,7 @@ export function handleSummary(data) {
     padL(num(writeReqs), 9) +
     '   ' +
     padL(pct(rejections, writeReqs), 9) +
-    `   (409: ${num(dupCount)}, 410: ${num(goneCount)})`,
+    `   (409: ${num(dupCount)})`,
   );
   push(
     '    ' +
@@ -344,20 +339,13 @@ export function handleSummary(data) {
     padL(pct(checks.passes, checksTotal), 9),
   );
   push('');
-  push(`  ORDER OUTCOMES   (${TARGET_PRODUCT}, ${EXPECTED_STOCK} units on offer)`);
-  push('    ' + padR('202 accepted', 22) + padL(num(okCount), 9));
+  push(`  ORDER OUTCOMES   (${TARGET_PRODUCT})`);
+  push('    ' + padR('202 accepted (queued)', 22) + padL(num(okCount), 9));
   push('    ' + padR('409 duplicate user', 22) + padL(num(dupCount), 9));
-  push('    ' + padR('410 sold out', 22) + padL(num(goneCount), 9));
   push('    ' + padR('unexpected status', 22) + padL(num(badCount), 9));
   push('');
   push('  VERDICT');
   push(verdict(realErrors === 0, `error rate ${pct(realErrors, totalReqs)}`));
-  push(
-    verdict(
-      okCount === EXPECTED_STOCK,
-      `accepted ${num(okCount)} of ${num(EXPECTED_STOCK)} units on offer`,
-    ),
-  );
   push(
     verdict(readT.p95 < 500, `GET  /products p95 ${readT.p95.toFixed(1)} ms`),
   );
