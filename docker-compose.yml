@@ -103,7 +103,8 @@ services:
       - ./k6:/scripts
     environment:
       BASE_URL: http://nginx
-    entrypoint: ["k6", "run", "/scripts/loadtest.js"]
+    entrypoint: ["k6", "run"]
+    command: ["/scripts/loadtest.js"]
     depends_on:
       - nginx
 
