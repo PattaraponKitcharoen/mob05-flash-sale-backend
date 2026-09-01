@@ -3,8 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../entities/product.entity';
 import { RedisService } from '../redis/redis.service';
+import { getEnvNumber } from '../config/env.utils';
 
-const TTL = Number(process.env.CACHE_TTL_SECONDS ?? 5);
+const TTL = getEnvNumber('CACHE_TTL_SECONDS');
 const REBUILD_LOCK_MS = 3000;
 const REBUILD_WAIT_MS = 200;
 const REBUILD_POLL_MS = 10;

@@ -11,6 +11,7 @@ import { Queue } from 'bullmq';
 import type { FastifyRegisterOptions } from 'fastify';
 import { WorkerModule } from './worker/worker.module';
 import { ORDERS_QUEUE } from './orders/orders.constants';
+import { getEnvNumber } from './config/env.utils';
 
 const BASE_PATH = '/admin/queues';
 
@@ -57,7 +58,7 @@ async function bootstrap() {
     bullBoardOptions as FastifyRegisterOptions<Record<never, never>>,
   );
 
-  const port = Number(process.env.WORKER_PORT ?? 3001);
+  const port = getEnvNumber('WORKER_PORT');
   await app.listen(port, '0.0.0.0');
   console.log(`Bull-Board listening on http://localhost:${port}${BASE_PATH}`);
 }

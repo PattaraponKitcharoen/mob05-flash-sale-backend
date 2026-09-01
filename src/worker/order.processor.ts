@@ -5,9 +5,10 @@ import { Job, UnrecoverableError } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { ORDERS_QUEUE, OrderJobData } from '../orders/orders.constants';
 import { RedisService } from '../redis/redis.service';
+import { getEnvNumber } from '../config/env.utils';
 
 @Processor(ORDERS_QUEUE, {
-  concurrency: Number(process.env.QUEUE_CONCURRENCY ?? 16),
+  concurrency: getEnvNumber('QUEUE_CONCURRENCY'),
 })
 export class OrderProcessor extends WorkerHost {
   private readonly log = new Logger(OrderProcessor.name);

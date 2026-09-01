@@ -4,7 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
-
+import { getEnvNumber } from './config/env.utils';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -15,7 +15,7 @@ async function bootstrap() {
   
   app.setGlobalPrefix('api/v1');
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = getEnvNumber('PORT');
   await app.listen(port, '0.0.0.0');
 }
 

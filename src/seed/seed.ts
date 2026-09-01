@@ -18,6 +18,8 @@ interface SeedProduct {
   isFlashSaleActive: boolean;
 }
 
+import { getEnv, getEnvNumber } from '../config/env.utils';
+
 async function scanDel(redis: Redis, pattern: string) {
   let cursor = '0';
   do {
@@ -39,11 +41,11 @@ async function main() {
 
   const ds = new DataSource({
     type: 'postgres',
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    username: process.env.DB_USER ?? 'admin',
-    password: process.env.DB_PASS ?? 'password',
-    database: process.env.DB_NAME ?? 'flashsale',
+    host: getEnv('DB_HOST'),
+    port: getEnvNumber('DB_PORT'),
+    username: getEnv('DB_USER'),
+    password: getEnv('DB_PASS'),
+    database: getEnv('DB_NAME'),
     entities: [Product, Order],
     // The seed container is the only place allowed to touch the schema.
     synchronize: true,
