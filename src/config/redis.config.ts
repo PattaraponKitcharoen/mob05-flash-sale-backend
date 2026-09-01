@@ -1,10 +1,12 @@
 import type { ConnectionOptions as BullConnectionOptions } from 'bullmq';
 import { RedisOptions } from 'ioredis';
 
+import { getEnv, getEnvNumber } from './env.utils';
+
 export function buildRedisOptions(): RedisOptions {
     return {
-        host: process.env.REDIS_HOST ?? 'localhost',
-        port: Number(process.env.REDIS_PORT ?? 6379),
+        host: getEnv('REDIS_HOST'),
+        port: getEnvNumber('REDIS_PORT'),
         // Batches commands issued in the same tick into one round trip; this is
         // the single biggest Redis win under high concurrency.
         enableAutoPipelining: true,

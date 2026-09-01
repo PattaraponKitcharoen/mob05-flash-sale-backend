@@ -2,14 +2,16 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { Order } from '../entities/order.entity';
 import { Product } from '../entities/product.entity';
 
+import { getEnv, getEnvNumber } from './env.utils';
+
 export function buildTypeOrmOptions(): TypeOrmModuleOptions {
   return {
     type: 'postgres',
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    username: process.env.DB_USER ?? 'admin',
-    password: process.env.DB_PASS ?? 'password',
-    database: process.env.DB_NAME ?? 'flashsale',
+    host: getEnv('DB_HOST'),
+    port: getEnvNumber('DB_PORT'),
+    username: getEnv('DB_USER'),
+    password: getEnv('DB_PASS'),
+    database: getEnv('DB_NAME'),
     entities: [Product, Order],
     // Schema is created once by the seed container, never by the API pods.
     synchronize: false,
@@ -17,7 +19,7 @@ export function buildTypeOrmOptions(): TypeOrmModuleOptions {
     extra: {
       // An oversized pool makes Postgres slower, not faster: it just adds
       // context switching. 20 per container across 6 containers = 120 conns.
-      max: Number(process.env.DB_POOL_MAX ?? 20),
+      max: getEnvNumber('DB_POOL_MAX'),
       min: 2,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
